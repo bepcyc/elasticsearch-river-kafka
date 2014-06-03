@@ -252,17 +252,19 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 			// start
 			for (KafkaStream<byte[], byte[]> partition : partitions) {
 				ConsumerIterator<byte[], byte[]> it = partition.iterator();
-				long numMsg = 0;
 				while (it.hasNext()) {
 					// connector.commitOffsets();手动提交offset,当autocommit.enable=false时使用
 					MessageAndMetadata<byte[], byte[]> item = it.next();
 					try {
+						long numMsg = 0;
 						++numMsg;
 						++river.stats.numMessages;
 						try {
 							byte[] playload = item.message();
 							logger.info(new String(playload));
 							river.msgHandler.handle(bulkRequestBuilder, playload);
+							logger.info("handleMessages processed {} messages stats {} ", numMsg,river.stats.numMessages);
+							executeBuilder(bulkRequestBuilder);
 						} catch (Exception e) {
 							logger.warn("Failed handling message", e);
 						}
@@ -271,8 +273,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 						e.printStackTrace();
 					}
 				}
-				logger.info("handleMessages processed {} messages", numMsg);
-				executeBuilder(bulkRequestBuilder);
+				
 			}
 		}
 
