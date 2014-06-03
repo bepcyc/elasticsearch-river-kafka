@@ -24,65 +24,62 @@ import org.elasticsearch.river.RiverSettings;
 
 public class KafkaRiverConfig {
 
-  public final String riverName;
-  public final String zookeeper;
-  public final String factoryClass; // full class path and name for the concrete message handler class factory
-  public final String topic;
-  public final int partition;
+	public final String riverName;
+	public final String zookeeper;
+	public final String factoryClass; // full class path and name for the concrete message handler class factory
+	public final String topic;
+	public final int partition;
 
-  public final String statsdPrefix;
-  public final String statsdHost;
-  public final int statsdPort;
+	public final String statsdPrefix;
+	public final String statsdHost;
+	public final int statsdPort;
 
-  public final int bulkSize;
-  public final TimeValue bulkTimeout;
-  public final long offset;
+	public final int bulkSize;
+	public final TimeValue bulkTimeout;
+	public final long offset;
 
-  public KafkaRiverConfig(String riverName, RiverSettings settings)
-  {
-    this.riverName = riverName;
-    if (settings.settings().containsKey("kafka")) {
-      Map<String, Object> kafkaSettings = (Map<String, Object>) settings.settings().get("kafka");
+	public KafkaRiverConfig(String riverName, RiverSettings settings) {
+		this.riverName = riverName;
+		if (settings.settings().containsKey("kafka")) {
+			Map<String, Object> kafkaSettings = (Map<String, Object>) settings.settings().get("kafka");
 
-      topic = (String)kafkaSettings.get("topic");
-      zookeeper = XContentMapValues.nodeStringValue(kafkaSettings.get("zookeeper"), "localhost");
-      factoryClass = XContentMapValues.nodeStringValue(kafkaSettings.get("message_handler_factory_class"), "org.elasticsearch.river.kafka.JsonMessageHandlerFactory");
-      partition = XContentMapValues.nodeIntegerValue(kafkaSettings.get("partition"), 0);
-      offset = XContentMapValues.nodeIntegerValue(kafkaSettings.get("partition"), 0);
-    }
-    else
-    {
-      zookeeper = "localhost";
-      topic = "default_topic";
-      partition = 0;
-      factoryClass = "org.elasticsearch.river.kafka.JsonMessageHandlerFactory";
-      offset = 0;
-    }
+			topic = (String) kafkaSettings.get("topic");
+			zookeeper = XContentMapValues.nodeStringValue(kafkaSettings.get("zookeeper"), "localhost");
+			factoryClass = XContentMapValues.nodeStringValue(kafkaSettings.get("message_handler_factory_class"),
+					"org.elasticsearch.river.kafka.JsonMessageHandlerFactory");
+			partition = XContentMapValues.nodeIntegerValue(kafkaSettings.get("partition"), 0);
+			offset = XContentMapValues.nodeLongValue(kafkaSettings.get("offset"), 0);
+		} else {
+			zookeeper = "localhost";
+			topic = "default_topic";
+			partition = 0;
+			factoryClass = "org.elasticsearch.river.kafka.JsonMessageHandlerFactory";
+			offset = 0;
+		}
 
-    if (settings.settings().containsKey("index")) {
-      Map<String, Object> indexSettings = (Map<String, Object>) settings.settings().get("index");
-      bulkSize = XContentMapValues.nodeIntegerValue(indexSettings.get("bulk_size_bytes"), 10*1024*1024);
-      if (indexSettings.containsKey("bulk_timeout")) {
-        bulkTimeout = TimeValue.parseTimeValue(XContentMapValues.nodeStringValue(indexSettings.get("bulk_timeout"), "10ms"), TimeValue.timeValueMillis(10000));
-      } else {
-        bulkTimeout = TimeValue.timeValueMillis(10);
-      }
-    } else {
-      bulkSize = 10*1024*1024;
-      bulkTimeout = TimeValue.timeValueMillis(10000);
-    }
+		if (settings.settings().containsKey("index")) {
+			Map<String, Object> indexSettings = (Map<String, Object>) settings.settings().get("index");
+			bulkSize = XContentMapValues.nodeIntegerValue(indexSettings.get("bulk_size_bytes"), 10 * 1024 * 1024);
+			if (indexSettings.containsKey("bulk_timeout")) {
+				bulkTimeout = TimeValue.parseTimeValue(XContentMapValues.nodeStringValue(indexSettings.get("bulk_timeout"), "10ms"),
+						TimeValue.timeValueMillis(10000));
+			} else {
+				bulkTimeout = TimeValue.timeValueMillis(10);
+			}
+		} else {
+			bulkSize = 10 * 1024 * 1024;
+			bulkTimeout = TimeValue.timeValueMillis(10000);
+		}
 
-    if (settings.settings().containsKey("statsd")) {
-      Map<String, Object> statsdSettings = (Map<String, Object>) settings.settings().get("statsd");
-      statsdHost = (String)statsdSettings.get("host");
-      statsdPort = XContentMapValues.nodeIntegerValue(statsdSettings.get("port"), 8125);
-      statsdPrefix = XContentMapValues.nodeStringValue(statsdSettings.get("prefix"), "es-kafka-river");
-    }
-    else
-    {
-      statsdHost = null;
-      statsdPort = -1;
-      statsdPrefix = null;
-    }
-  }
+		if (settings.settings().containsKey("statsd")) {
+			Map<String, Object> statsdSettings = (Map<String, Object>) settings.settings().get("statsd");
+			statsdHost = (String) statsdSettings.get("host");
+			statsdPort = XContentMapValues.nodeIntegerValue(statsdSettings.get("port"), 8125);
+			statsdPrefix = XContentMapValues.nodeStringValue(statsdSettings.get("prefix"), "es-kafka-river");
+		} else {
+			statsdHost = null;
+			statsdPort = -1;
+			statsdPrefix = null;
+		}
+	}
 }

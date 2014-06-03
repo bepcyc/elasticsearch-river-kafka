@@ -77,7 +77,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 		try {
 			logger.info("creating kafka river: zookeeper = {}, name = {}, message_handler_factory_class = {}", riverConfig.zookeeper,
 					riverConfig.riverName, riverConfig.factoryClass);
-			logger.info("part = {}, topic = {}", riverConfig.partition, riverConfig.topic);
+			logger.info("partition = {}, topic = {},offset = {} ", riverConfig.partition, riverConfig.topic,riverConfig.offset);
 			logger.info("bulkSize = {}, bulkTimeout = {}", riverConfig.bulkSize, riverConfig.bulkTimeout);
 
 			KafkaRiverWorker worker = new KafkaRiverWorker(this.createMessageHandler(client, riverConfig), riverConfig, client);
