@@ -225,6 +225,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 				ZkUtils.maybeDeletePath(props.getProperty("zookeeper.connect"), "/consumers/" + props.getProperty("group.id"));
 				props.put("auto.offset.reset", "smallest");
 			}
+			logger.info("auto.offset.reset {}", props.getProperty("auto.offset.reset"));
 			ConsumerConfig config = new ConsumerConfig(props);
 			try {
 				Thread.sleep(10000);
@@ -249,9 +250,9 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 			// KafkaStream<byte[], byte[]> stream = consumerMap.get(topic);
 			List<KafkaStream<byte[], byte[]>> partitions = consumerMap.get(river.riverConfig.topic);
 			// start
-			long numMsg = 0;
 			for (KafkaStream<byte[], byte[]> partition : partitions) {
 				ConsumerIterator<byte[], byte[]> it = partition.iterator();
+				long numMsg = 0;
 				while (it.hasNext()) {
 					// connector.commitOffsets();手动提交offset,当autocommit.enable=false时使用
 					MessageAndMetadata<byte[], byte[]> item = it.next();
@@ -261,7 +262,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 						try {
 							byte[] playload = item.message();
 							logger.info(new String(playload));
- 							river.msgHandler.handle(bulkRequestBuilder, playload);
+							river.msgHandler.handle(bulkRequestBuilder, playload);
 						} catch (Exception e) {
 							logger.warn("Failed handling message", e);
 						}
@@ -270,9 +271,9 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 						e.printStackTrace();
 					}
 				}
+				logger.info("handleMessages processed {} messages", numMsg);
+				executeBuilder(bulkRequestBuilder);
 			}
-			logger.info("handleMessages processed {} messages", numMsg);
-			executeBuilder(bulkRequestBuilder);
 		}
 
 		void initKakfa() {
