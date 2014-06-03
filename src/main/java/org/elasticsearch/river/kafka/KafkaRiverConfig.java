@@ -36,7 +36,7 @@ public class KafkaRiverConfig {
 
   public final int bulkSize;
   public final TimeValue bulkTimeout;
-  public final boolean startFromNewestOffset;
+  public final long offset;
 
   public KafkaRiverConfig(String riverName, RiverSettings settings)
   {
@@ -48,7 +48,7 @@ public class KafkaRiverConfig {
       zookeeper = XContentMapValues.nodeStringValue(kafkaSettings.get("zookeeper"), "localhost");
       factoryClass = XContentMapValues.nodeStringValue(kafkaSettings.get("message_handler_factory_class"), "org.elasticsearch.river.kafka.JsonMessageHandlerFactory");
       partition = XContentMapValues.nodeIntegerValue(kafkaSettings.get("partition"), 0);
-      startFromNewestOffset = XContentMapValues.nodeBooleanValue(kafkaSettings.get("startFromNewestOffset"), false);
+      offset = XContentMapValues.nodeIntegerValue(kafkaSettings.get("partition"), 0);
     }
     else
     {
@@ -56,7 +56,7 @@ public class KafkaRiverConfig {
       topic = "default_topic";
       partition = 0;
       factoryClass = "org.elasticsearch.river.kafka.JsonMessageHandlerFactory";
-      startFromNewestOffset = false;
+      offset = 0;
     }
 
     if (settings.settings().containsKey("index")) {

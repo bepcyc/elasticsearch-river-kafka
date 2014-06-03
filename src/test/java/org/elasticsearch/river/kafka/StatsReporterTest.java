@@ -27,58 +27,58 @@ import org.elasticsearch.river.RiverSettings;
 
 public class StatsReporterTest extends TestCase {
 
-  public void reoportStats() throws Exception {
-    Settings globalSettings = ImmutableSettings.settingsBuilder().put("cluster.name", "jason-hfs-cluster").build();
-    Map<String, Object> config = new HashMap<>();
-    config.put("statsd", ImmutableMap.<String, Object> builder().put("host", "localhost").put("port", "1234").put("prefix", "my_prefix").build());
+	public void reoportStats() throws Exception {
+		Settings globalSettings = ImmutableSettings.settingsBuilder().put("cluster.name", "jason-hfs-cluster").build();
+		Map<String, Object> config = new HashMap<String, Object>();
+		config.put("statsd", ImmutableMap.<String, Object> builder().put("host", "localhost").put("port", "1234").put("prefix", "my_prefix").build());
 
-    StatsReporter r = new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config)));
-    Stats s = new Stats();
+		StatsReporter r = new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config)));
+		Stats s = new Stats();
 
-    // cant mock statsdclient - due to it being final (Easymock creates a
-    // subclass to work its magic
-    //
-    // ALSO count and gauge calls to StatsDClient are no blocking and will
-    // not throw exception, so basically not much to test here
-    //
+		// cant mock statsdclient - due to it being final (Easymock creates a
+		// subclass to work its magic
+		//
+		// ALSO count and gauge calls to StatsDClient are no blocking and will
+		// not throw exception, so basically not much to test here
+		//
 
-    try {
-      r.reoportStats(s);
-    } catch (Exception e) {
-      fail("This should not fail : " + e.toString());
-    }
+		try {
+			r.reoportStats(s);
+		} catch (Exception e) {
+			fail("This should not fail : " + e.toString());
+		}
 
-    s = null;
+		s = null;
 
-    boolean thrown = false;
-    try {
-      r.reoportStats(s);
-      fail("Never should have gotten here: ");
-    } catch (NullPointerException e) {
-      thrown = true;
-    }
+		boolean thrown = false;
+		try {
+			r.reoportStats(s);
+			fail("Never should have gotten here: ");
+		} catch (NullPointerException e) {
+			thrown = true;
+		}
 
-    assertTrue(thrown);
-  }
+		assertTrue(thrown);
+	}
 
-  public void testNormal() {
-    Settings globalSettings = ImmutableSettings.settingsBuilder().put("cluster.name", "jason-hfs-cluster").build();
-    Map<String, Object> config = new HashMap<>();
-    config.put("statsd", ImmutableMap.<String, Object> builder().put("host", "localhost").put("port", "1234").put("prefix", "my_prefix").build());
+	public void testNormal() {
+		Settings globalSettings = ImmutableSettings.settingsBuilder().put("cluster.name", "jason-hfs-cluster").build();
+		Map<String, Object> config = new HashMap<String, Object>();
+		config.put("statsd", ImmutableMap.<String, Object> builder().put("host", "localhost").put("port", "1234").put("prefix", "my_prefix").build());
 
-    StatsReporter r = new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config)));
-    assertTrue(r.isEnabled());
+		StatsReporter r = new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config)));
+		assertTrue(r.isEnabled());
 
-  }
+	}
 
-  public void testNotConfigured() {
-    Settings globalSettings = ImmutableSettings.settingsBuilder().put("cluster.name", "jason-hfs-cluster").build();
-    Map<String, Object> config = new HashMap<>();
-    // no statsd config at all
-    assertFalse(new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config))).isEnabled());
+	public void testNotConfigured() {
+		Settings globalSettings = ImmutableSettings.settingsBuilder().put("cluster.name", "jason-hfs-cluster").build();
+		Map<String, Object> config = new HashMap<String, Object>();
+		// no statsd config at all
+		assertFalse(new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config))).isEnabled());
 
-    // missing host
-    config.put("statsd", ImmutableMap.<String, Object> builder().put("port", "1234").put("prefix", "my_prefix").build());
-    assertFalse(new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config))).isEnabled());
-  }
+		// missing host
+		config.put("statsd", ImmutableMap.<String, Object> builder().put("port", "1234").put("prefix", "my_prefix").build());
+		assertFalse(new StatsReporter(new KafkaRiverConfig("testRiver", new RiverSettings(globalSettings, config))).isEnabled());
+	}
 }

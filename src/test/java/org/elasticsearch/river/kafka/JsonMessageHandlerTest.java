@@ -35,85 +35,95 @@ import org.elasticsearch.client.Client;
 
 public class JsonMessageHandlerTest extends TestCase {
 
-  private String toJson(Object value) {
-    ObjectMapper mapper = new ObjectMapper();
-    try {
-      return mapper.writeValueAsString(value);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-  }
+	private String toJson(Object value) {
+		ObjectMapper mapper = new ObjectMapper();
+		try {
+			return mapper.writeValueAsString(value);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
 
-  Map<String, Object> rec = new HashMap<String, Object>(){{
-    put("index", "xyz");
-    put("type", "datatype1");
-    put("source", new HashMap<String, Object>(){{put("field", "1");}});
-  }};
+	Map<String, Object> rec = new HashMap<String, Object>() {
+		{
+			put("index", "xyz");
+			put("type", "datatype1");
+			put("source", new HashMap<String, Object>() {
+				{
+					put("field", "1");
+				}
+			});
+		}
+	};
 
-  public void testReadMessage() throws Exception
-  {
-    JsonMessageHandler h = new JsonMessageHandler(null);
-    byte[] json = toJson(rec).getBytes();
-    Message message = createMock(Message.class);
-    expect(message.payload()).andReturn(ByteBuffer.wrap(json));
-    replay(message);
+	public static byte[] getMessageData(Message message) {
+		ByteBuffer buf = message.payload();
+		byte[] data = new byte[buf.remaining()];
+		buf.get(data);
+		return data;
+	}
 
-    try {
-      h.readMessage(message);
-    } catch (Exception e) {
-      fail("This should not fail");
-    }
+	public void testReadMessage() throws Exception {
+		JsonMessageHandler h = new JsonMessageHandler(null);
+		byte[] json = toJson(rec).getBytes();
+		Message message = createMock(Message.class);
+		expect(message.payload()).andReturn(ByteBuffer.wrap(json));
+		replay(message);
 
-    verify(message);
-  }
+		try {
+			h.readMessage(getMessageData(message));
+		} catch (Exception e) {
+			fail("This should not fail");
+		}
 
-  public void testGettersFromReadMessageReturnedMap() throws Exception
-  {
-    JsonMessageHandler h = new JsonMessageHandler(null);
-    byte[] json = toJson(rec).getBytes();
-    Message message = createMock(Message.class);
+		verify(message);
+	}
 
-    expect(message.payload()).andReturn(ByteBuffer.wrap(json));
-    replay(message);
+	public void testGettersFromReadMessageReturnedMap() throws Exception {
+		JsonMessageHandler h = new JsonMessageHandler(null);
+		byte[] json = toJson(rec).getBytes();
+		Message message = createMock(Message.class);
 
-    try {
-      h.readMessage(message);
-    } catch (Exception e) {
-      fail("This should not fail");
-    }
+		expect(message.payload()).andReturn(ByteBuffer.wrap(json));
+		replay(message);
 
-    assertEquals(h.getIndex(), rec.get("index"));
-    assertEquals(h.getType(), rec.get("type"));
-    assertEquals(h.getSource(), rec.get("source"));
-    assertEquals(h.getId(), rec.get("id"));
-    verify(message);
-  }
+		try {
+			h.readMessage(getMessageData(message));
+		} catch (Exception e) {
+			fail("This should not fail");
+		}
 
-  public void testIt() throws Exception
-  {
-    Client client = createMock(Client.class);
-    IndexRequestBuilder irb = createMock(IndexRequestBuilder.class);
-    JsonMessageHandler h = new JsonMessageHandler(client);
-    byte[] json = toJson(rec).getBytes();
+		assertEquals(h.getIndex(), rec.get("index"));
+		assertEquals(h.getType(), rec.get("type"));
+		assertEquals(h.getSource(), rec.get("source"));
+		assertEquals(h.getId(), rec.get("id"));
+		verify(message);
+	}
 
-    expect(client.prepareIndex(anyObject(String.class), anyObject(String.class), anyObject(String.class))).andReturn(irb);
-    replay(client);
+	public void testIt() throws Exception {
+		Client client = createMock(Client.class);
+		IndexRequestBuilder irb = createMock(IndexRequestBuilder.class);
+		JsonMessageHandler h = new JsonMessageHandler(client);
+		byte[] json = toJson(rec).getBytes();
 
-    Message message = createMock(Message.class);
-    expect(message.payload()).andReturn(ByteBuffer.wrap(json));
-    replay(message);
+		expect(client.prepareIndex(anyObject(String.class), anyObject(String.class), anyObject(String.class))).andReturn(irb);
+		replay(client);
 
-    BulkRequestBuilder bulkRequestBuilder = createMock(BulkRequestBuilder.class);
+		Message message = createMock(Message.class);
+		expect(message.payload()).andReturn(ByteBuffer.wrap(json));
+		replay(message);
 
-    expect(bulkRequestBuilder.add(anyObject(IndexRequestBuilder.class))).andReturn(null);
-    replay(bulkRequestBuilder);
+		BulkRequestBuilder bulkRequestBuilder = createMock(BulkRequestBuilder.class);
 
-    try {
-      h.handle(bulkRequestBuilder, message);
-    } catch (Exception e) {
-      fail("This should not fail");
-    }
+		expect(bulkRequestBuilder.add(anyObject(IndexRequestBuilder.class))).andReturn(null);
+		replay(bulkRequestBuilder);
 
-    verify(client);
-  }
+		try {
+			h.handle(bulkRequestBuilder, getMessageData(message));
+		} catch (Exception e) {
+			fail("This should not fail");
+		}
+
+		verify(client);
+	}
 }

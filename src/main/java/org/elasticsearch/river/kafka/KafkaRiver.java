@@ -16,16 +16,30 @@
 
 package org.elasticsearch.river.kafka;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+
 import kafka.common.InvalidMessageSizeException;
 import kafka.common.OffsetOutOfRangeException;
+import kafka.consumer.ConsumerConfig;
+import kafka.consumer.ConsumerIterator;
+import kafka.consumer.KafkaStream;
+import kafka.javaapi.consumer.ConsumerConnector;
 import kafka.javaapi.message.ByteBufferMessageSet;
+import kafka.message.MessageAndMetadata;
 import kafka.message.MessageAndOffset;
+import kafka.utils.ZkUtils;
 
 import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.inject.Inject;
+import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.river.AbstractRiverComponent;
 import org.elasticsearch.river.River;
@@ -34,337 +48,420 @@ import org.elasticsearch.river.RiverSettings;
 
 /**
  * KafkaRiver
- *
+ * 
  */
 public class KafkaRiver extends AbstractRiverComponent implements River {
 
-  private final Client client;
-  private final KafkaRiverConfig riverConfig;
+	private final Client client;
+	private final KafkaRiverConfig riverConfig;
 
-  private volatile boolean closed = false;
-  private volatile Thread thread;
+	private volatile boolean closed = false;
+	private volatile Thread thread;
 
-  @Inject
-  public KafkaRiver(RiverName riverName, RiverSettings settings, Client client) {
-    super(riverName, settings);
-    this.client = client;
+	@Inject
+	public KafkaRiver(RiverName riverName, RiverSettings settings, Client client) {
+		super(riverName, settings);
+		this.client = client;
 
-    try {
-      logger.info("KafkaRiver created: name={}, type={}", riverName.getName(), riverName.getType());
-      this.riverConfig = new KafkaRiverConfig(riverName.getName(), settings);
-    } catch (Exception e) {
-      logger.error("Unexpected Error occurred", e);
-      throw new RuntimeException(e);
-    }
-  }
+		try {
+			logger.info("KafkaRiver created: name={}, type={}", riverName.getName(), riverName.getType());
+			this.riverConfig = new KafkaRiverConfig(riverName.getName(), settings);
+		} catch (Exception e) {
+			logger.error("Unexpected Error occurred", e);
+			throw new RuntimeException(e);
+		}
+	}
 
-  @Override
-  public void start() {
-    try {
-      logger.info("creating kafka river: zookeeper = {}, name = {}, message_handler_factory_class = {}", riverConfig.zookeeper, riverConfig.riverName, riverConfig.factoryClass);
-      logger.info("part = {}, topic = {}", riverConfig.partition, riverConfig.topic);
-      logger.info("bulkSize = {}, bulkTimeout = {}", riverConfig.bulkSize, riverConfig.bulkTimeout);
+	@Override
+	public void start() {
+		try {
+			logger.info("creating kafka river: zookeeper = {}, name = {}, message_handler_factory_class = {}", riverConfig.zookeeper,
+					riverConfig.riverName, riverConfig.factoryClass);
+			logger.info("part = {}, topic = {}", riverConfig.partition, riverConfig.topic);
+			logger.info("bulkSize = {}, bulkTimeout = {}", riverConfig.bulkSize, riverConfig.bulkTimeout);
 
-      KafkaRiverWorker worker = new KafkaRiverWorker(this.createMessageHandler(client, riverConfig), riverConfig, client);
+			KafkaRiverWorker worker = new KafkaRiverWorker(this.createMessageHandler(client, riverConfig), riverConfig, client);
 
-      thread = EsExecutors.daemonThreadFactory(settings.globalSettings(), "kafka_river").newThread(worker);
-      thread.start();
-    } catch (Exception e) {
-      logger.error("Unexpected Error occurred", e);
-      throw new RuntimeException(e);
-    }
-  }
+			thread = EsExecutors.daemonThreadFactory(settings.globalSettings(), "kafka_river").newThread(worker);
+			thread.start();
+		} catch (Exception e) {
+			logger.error("Unexpected Error occurred", e);
+			throw new RuntimeException(e);
+		}
+	}
 
-  @Override
-  public void close() {
-    try {
-      if (closed) {
-        return;
-      }
-      logger.info("closing kafka river");
-      closed = true;
-      if (thread != null) {
-        thread.interrupt();
-      }
-    } catch (Exception e) {
-      logger.error("Unexpected Error occurred", e);
-      throw new RuntimeException(e);
-    }
-  }
+	@Override
+	public void close() {
+		try {
+			if (closed) {
+				return;
+			}
+			logger.info("closing kafka river");
+			closed = true;
+			if (thread != null) {
+				thread.interrupt();
+			}
+		} catch (Exception e) {
+			logger.error("Unexpected Error occurred", e);
+			throw new RuntimeException(e);
+		}
+	}
 
-  /**
-   * createMessageHandler
-   *
-   *
-   * @param client
-   * @param config
-   * @return
-   * @throws Exception
-   */
-  private MessageHandler createMessageHandler(Client client, KafkaRiverConfig config) throws Exception{
-    MessageHandlerFactory handlerfactory = null;
-    try {
-      handlerfactory = (MessageHandlerFactory) Class.forName(config.factoryClass).newInstance();
-    } catch (Exception e) {
-      logger.error("Unexpected Error occurred", e);
-      throw new RuntimeException(e);
-    }
+	/**
+	 * createMessageHandler
+	 * 
+	 * 
+	 * @param client
+	 * @param config
+	 * @return
+	 * @throws Exception
+	 */
+	private MessageHandler createMessageHandler(Client client, KafkaRiverConfig config) throws Exception {
+		MessageHandlerFactory handlerfactory = null;
+		try {
+			handlerfactory = (MessageHandlerFactory) Class.forName(config.factoryClass).newInstance();
+		} catch (Exception e) {
+			logger.error("Unexpected Error occurred", e);
+			throw new RuntimeException(e);
+		}
 
-    return handlerfactory.createMessageHandler(client);
-  }
+		return handlerfactory.createMessageHandler(client);
+	}
 
-  /**
-   * KafkaRiverWorker
-   *
-   *
-   */
-  private class KafkaRiverWorker implements Runnable {
+	public static void main(String[] args) throws IOException {
+		Map<String, Object> kafkaMap = new HashMap<String, Object>();
+		kafkaMap.put("zookeeper", "omad1.server.163.org:2181");
+		String topic = "testomad";
+		kafkaMap.put("topic", "testomad");
+		kafkaMap.put("partition", "-1");
+		// kafka.put("message_handler_factory_class", "my.factory.class.MyFactory");
 
-    long offset;
-    MessageHandler msgHandler;
+		Map<String, Object> index = new HashMap<String, Object>();
+		index.put("bulk_size_bytes", "1717171");
+		index.put("bulk_timeout", "111ms");
 
-    private KafkaClient kafka;
-    private Client client;
-    private KafkaRiverConfig riverConfig;
+		Map<String, Object> statsd = new HashMap<String, Object>();
+		statsd.put("host", "omad1.server.163.org");
+		statsd.put("port", "8125");
+		statsd.put("prefix", "boo.yeah");
 
-    StatsReporter statsd;
-    private long statsLastPrintTime;
-    private Stats stats = new Stats();
+		Map<String, Object> map = new HashMap<String, Object>();
+		map.put("kafka", kafkaMap);
+		map.put("index", index);
+		map.put("statsd", statsd);
 
-    public KafkaRiverWorker(MessageHandler msgHandler, KafkaRiverConfig riverConfig, Client client) throws Exception
-    {
-      this.msgHandler = msgHandler;
-      this.client = client;
-      this.riverConfig = riverConfig;
-      reconnectToKafka();
-      resetStats();
-      initStatsd(riverConfig);
-    }
+		/*
+		 * Properties props = new Properties(); props.put("zookeeper.connect", "omad1.server.163.org:2181"); props.put("group.id", "test");
+		 * props.put("zookeeper.session.timeout.ms", "10000"); props.put("zookeeper.sync.time.ms", "200"); props.put("auto.commit.interval.ms",
+		 * "1000"); props.put("auto.offset.reset", "smallest"); ConsumerConfig config = new ConsumerConfig(props); ConsumerConnector consumer =
+		 * kafka.consumer.Consumer.createJavaConsumerConnector(config);
+		 * 
+		 * Map<String, Integer> topicCountMap = new HashMap<String, Integer>(); topicCountMap.put(topic, new Integer(1)); Map<String,
+		 * List<KafkaStream<byte[], byte[]>>> consumerMap = consumer.createMessageStreams(topicCountMap); // KafkaStream<byte[], byte[]> stream =
+		 * consumerMap.get(topic); List<KafkaStream<byte[], byte[]>> partitions = consumerMap.get(topic); ExecutorService threadPool =
+		 * Executors.newFixedThreadPool(1 * 2); // start
+		 * 
+		 * for (KafkaStream<byte[], byte[]> partition : partitions) { ConsumerIterator<byte[], byte[]> it = partition.iterator(); while (it.hasNext())
+		 * { // connector.commitOffsets();手动提交offset,当autocommit.enable=false时使用 MessageAndMetadata<byte[], byte[]> item = it.next(); byte[] playload
+		 * = item.message(); System.out.println(new String(playload)); } }
+		 */
 
-    void initStatsd(KafkaRiverConfig riverConfig)
-    {
-      statsd = new StatsReporter(riverConfig);
-      if(statsd.isEnabled())
-      {
-        logger.info("Created statsd client for prefix={}, host={}, port={}", riverConfig.statsdPrefix, riverConfig.statsdHost, riverConfig.statsdPort);
-      }
-      else
-      {
-        logger.info("Note: statsd is not configured, only console metrics will be provided");
-      }
-    }
+		RiverSettings settings = new RiverSettings(ImmutableSettings.settingsBuilder().build(), map);
+		KafkaRiverConfig c = new KafkaRiverConfig("testRiver", settings);
+		KafkaRiver r = new KafkaRiver(new RiverName("kafka", "kafka"), settings, null);
+		r.start();
+		System.in.read();
+	}
 
-    void resetStats()
-    {
-      statsLastPrintTime = System.currentTimeMillis();
-      stats.reset();
-    }
+	/**
+	 * KafkaRiverWorker
+	 * 
+	 * 
+	 */
+	public class KafkaRiverWorker implements Runnable {
 
-    void initKakfa()
-    {
-      this.kafka = new KafkaClient(riverConfig.zookeeper, riverConfig.topic, riverConfig.partition);
-      this.offset = kafka.getOffset(riverConfig.riverName, riverConfig.topic, riverConfig.partition, riverConfig.startFromNewestOffset);
-    }
+		KafkaRiverWorkerData river = new KafkaRiverWorkerData(new Stats());
+		BulkRequestBuilder bulkRequestBuilder = null;
 
-    void handleMessages(BulkRequestBuilder bulkRequestBuilder, ByteBufferMessageSet msgs)
-    {
-      long numMsg = 0;
-      for(MessageAndOffset mo : msgs)
-      {
-        ++numMsg;
-        ++stats.numMessages;
-        try {
-          msgHandler.handle(bulkRequestBuilder, mo.message());
-          offset = mo.nextOffset();
-        } catch (Exception e) {
-          logger.warn("Failed handling message", e);
-        }
-      }
-      logger.debug("handleMessages processed {} messages", numMsg);
-    }
+		public KafkaRiverWorker(MessageHandler msgHandler, KafkaRiverConfig riverConfig, Client client) throws Exception {
+			this.river.msgHandler = msgHandler;
+			this.river.client = client;
+			if (client != null) {
+				bulkRequestBuilder = client.prepareBulk();
+			}
+			this.river.riverConfig = riverConfig;
+			reconnectToKafka();
+			resetStats();
+			initStatsd(riverConfig);
+		}
 
-    void executeBuilder(BulkRequestBuilder bulkRequestBuilder)
-    {
-      if(bulkRequestBuilder.numberOfActions() == 0)
-        return;
+		void initStatsd(KafkaRiverConfig riverConfig) {
+			river.statsd = new StatsReporter(riverConfig);
+			if (river.statsd.isEnabled()) {
+				logger.info("Created statsd client for prefix={}, host={}, port={}", riverConfig.statsdPrefix, riverConfig.statsdHost,
+						riverConfig.statsdPort);
+			} else {
+				logger.info("Note: statsd is not configured, only console metrics will be provided");
+			}
+		}
 
-      ++stats.flushes;
-      BulkResponse response = bulkRequestBuilder.execute().actionGet();
-      if (response.hasFailures()) {
-        logger.warn("failed to execute" + response.buildFailureMessage());
-      }
+		void resetStats() {
+			river.statsLastPrintTime = System.currentTimeMillis();
+			river.stats.reset();
+		}
 
-      for(BulkItemResponse resp : response){
-        if(resp.isFailed()){
-          stats.failed++;
-        }else{
-          stats.succeeded++;
-        }
-      }
-    }
+		ConsumerConnector consumer = null;
 
-    void processNonEmptyMessageSet(ByteBufferMessageSet msgs)
-    {
-      logger.debug("Processing {} bytes of messages ...", msgs.validBytes());
-      BulkRequestBuilder bulkRequestBuilder = client.prepareBulk();
-      handleMessages(bulkRequestBuilder, msgs);
-      executeBuilder(bulkRequestBuilder);
-      kafka.saveOffset(riverConfig.riverName, riverConfig.topic, riverConfig.partition, offset);
-    }
+		private void createConsumerConfig() {
+			Properties props = new Properties();
+			props.put("zookeeper.connect", river.riverConfig.zookeeper);
+			props.put("group.id", river.riverConfig.riverName);
+			props.put("zookeeper.session.timeout.ms", "10000");
+			props.put("zookeeper.sync.time.ms", "200");
+			props.put("auto.commit.interval.ms", "1000");
+			if (river.riverConfig.offset < 0) {
+				props.put("auto.offset.reset", "largest");
+			} else {
+				ZkUtils.maybeDeletePath(props.getProperty("zookeeper.connect"), "/consumers/" + props.getProperty("group.id"));
+				props.put("auto.offset.reset", "smallest");
+			}
+			ConsumerConfig config = new ConsumerConfig(props);
+			try {
+				Thread.sleep(10000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			consumer = kafka.consumer.Consumer.createJavaConsumerConnector(config);
+		}
 
-    void reconnectToKafka() throws InterruptedException
-    {
-      while(true)
-      {
-        if(closed)
-          break;
+		public void run() {
+			if (river.riverConfig.partition < 0) {
+				runAll();
+			} else {
+				runSingle();
+			}
+		}
 
-        try {
-          try {
-            if (kafka != null) {
-              kafka.close();
-            }
-          } catch (Exception e) {}
+		public void runAll() {
+			Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
+			topicCountMap.put(river.riverConfig.topic, new Integer(1));
+			Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = consumer.createMessageStreams(topicCountMap);
+			// KafkaStream<byte[], byte[]> stream = consumerMap.get(topic);
+			List<KafkaStream<byte[], byte[]>> partitions = consumerMap.get(river.riverConfig.topic);
+			// start
+			long numMsg = 0;
+			for (KafkaStream<byte[], byte[]> partition : partitions) {
+				ConsumerIterator<byte[], byte[]> it = partition.iterator();
+				while (it.hasNext()) {
+					// connector.commitOffsets();手动提交offset,当autocommit.enable=false时使用
+					MessageAndMetadata<byte[], byte[]> item = it.next();
+					try {
+						++numMsg;
+						++river.stats.numMessages;
+						try {
+							byte[] playload = item.message();
+							logger.info(new String(playload));
+ 							river.msgHandler.handle(bulkRequestBuilder, playload);
+						} catch (Exception e) {
+							logger.warn("Failed handling message", e);
+						}
+					} catch (Exception e) {
+						//
+						e.printStackTrace();
+					}
+				}
+			}
+			logger.info("handleMessages processed {} messages", numMsg);
+			executeBuilder(bulkRequestBuilder);
+		}
 
-          initKakfa();
-          break;
-        }
-        catch(Exception e2){
-          logger.error("Error re-connecting to Kafka({}/{}), retrying in 5 sec", e2, riverConfig.topic, riverConfig.partition);
-          Thread.sleep(5000);
-        }
-      }
-    }
+		void initKakfa() {
+			if (river.riverConfig.partition < 0) {
+				createConsumerConfig();
+			} else {
+				// from single partition
+				this.river.kafka = new KafkaClient(river.riverConfig.zookeeper, river.riverConfig.topic, river.riverConfig.partition);
+				this.river.offset = river.kafka.getOffset(river.riverConfig.riverName, river.riverConfig.topic, river.riverConfig.partition,
+						river.riverConfig.offset);
+				this.river.offset = 0;
+			}
+		}
 
-    long getBacklogSize()
-    {
-      return kafka.getNewestOffset(riverConfig.topic, riverConfig.partition) - offset;
-    }
+		void handleMessages(ByteBufferMessageSet msgs) {
+			long numMsg = 0;
+			for (MessageAndOffset mo : msgs) {
+				++numMsg;
+				++river.stats.numMessages;
+				try {
+					ByteBuffer buf = mo.message().payload();
+					byte[] playload = new byte[buf.remaining()];
+					buf.get(playload);
+					river.msgHandler.handle(bulkRequestBuilder, playload);
+					river.offset = mo.nextOffset();
+				} catch (Exception e) {
+					logger.warn("Failed handling message", e);
+				}
+			}
+			logger.info("handleMessages processed {} messages", numMsg);
+		}
 
-    void dumpStats()
-    {
-      long elapsed = System.currentTimeMillis() - statsLastPrintTime;
-      if(elapsed >= 10000)
-      {
-        stats.backlog = getBacklogSize();
-        stats.rate = (double)stats.numMessages/((double)elapsed/1000.0);
-        logger.info("{}:{}/{}:{} {} msg ({} msg/s), flushed {} ({} err, {} succ) [msg backlog {}]",
-            kafka.brokerHost, kafka.brokerPort, riverConfig.topic, riverConfig.partition,
-            stats.numMessages, String.format("%.2f", stats.rate), stats.flushes,
-            stats.failed, stats.succeeded,
-            getBytesString(stats.backlog));
+		void executeBuilder(BulkRequestBuilder bulkRequestBuilder) {
+			if (bulkRequestBuilder == null || bulkRequestBuilder.numberOfActions() == 0)
+				return;
+			++river.stats.flushes;
+			BulkResponse response = bulkRequestBuilder.execute().actionGet();
+			if (response.hasFailures()) {
+				logger.warn("failed to execute" + response.buildFailureMessage());
+			}
 
-        statsd.reoportStats(stats);
-        resetStats();
-      }
-    }
+			for (BulkItemResponse resp : response) {
+				if (resp.isFailed()) {
+					river.stats.failed++;
+				} else {
+					river.stats.succeeded++;
+				}
+			}
+		}
 
-    @Override
-    public void run() {
+		void processNonEmptyMessageSet(ByteBufferMessageSet msgs) {
+			logger.debug("Processing {} bytes of messages ...", msgs.validBytes());
+			handleMessages(msgs);
+			executeBuilder(bulkRequestBuilder);
+		}
 
-      try {
-        logger.info("KafkaRiverWorker is running...");
+		void reconnectToKafka() throws InterruptedException {
+			while (true) {
+				if (closed)
+					break;
 
-        while(true)
-        {
-          if(closed)
-            break;
+				try {
+					try {
+						if (river.kafka != null) {
+							river.kafka.close();
+						}
+					} catch (Exception e) {
+					}
 
-          try {
+					initKakfa();
+					break;
+				} catch (Exception e2) {
+					logger.error("Error re-connecting to Kafka({}/{}), retrying in 5 sec", e2, river.riverConfig.topic, river.riverConfig.partition);
+					Thread.sleep(5000);
+				}
+			}
+		}
 
-            dumpStats();
+		long getBacklogSize() {
+			return river.kafka.getNewestOffset(river.riverConfig.topic, river.riverConfig.partition) - river.offset;
+		}
 
-            ByteBufferMessageSet msgs = kafka.fetch(riverConfig.topic, riverConfig.partition, offset, riverConfig.bulkSize);
-            if(msgs.validBytes() > 0)
-            {
-              processNonEmptyMessageSet(msgs);
-            }
-            else
-            {
-              logger.debug("No messages received from Kafka for topic={}, partition={}, offset={}, bulkSize={}",
-                  riverConfig.topic, riverConfig.partition, offset, riverConfig.bulkSize);
-              Thread.sleep(1000);
-            }
-          }
-          catch (InterruptedException e2) {
-            break;
-          }
-          catch(OffsetOutOfRangeException e)
-          {
-            // Assumption: EITHER
-            //
-            //  1) This River is starting for the first time and Kafka has already aged some data out (so the lowest offset is not 0)
-            //      OR
-            //  2) This river has gotten far enough behind that Kafka has aged off enough data that the offset is no longer valid.
-            //     If this is the case, this will likely happen everytime Kafka ages off old data unless the data flow decreases in volume.
-            if (riverConfig.startFromNewestOffset) {
-              logger.warn("Encountered OffsetOutOfRangeException, querying Kafka for newest Offset and reseting local offset");
-              offset = kafka.getNewestOffset(riverConfig.topic, riverConfig.partition);
-              logger.warn("Setting offset to oldest offset = {}", offset);
-            }
-            else {
-              logger.warn("Encountered OffsetOutOfRangeException, querying Kafka for oldest Offset and reseting local offset");
-              offset = kafka.getOldestOffset(riverConfig.topic, riverConfig.partition);
-              logger.warn("Setting offset to oldest offset = {}", offset);
-            }
-          }
-          catch (InvalidMessageSizeException e) {
-            if (riverConfig.startFromNewestOffset) {
-              logger.warn("InvalidMessageSizeException occurred for Kafka({}:{}/{}:{}), querying Kafka for newest Offset and reseting local offset", e, kafka.brokerHost, kafka.brokerPort, riverConfig.topic, riverConfig.partition);
-              offset = kafka.getNewestOffset(riverConfig.topic, riverConfig.partition);
-              logger.warn("Setting offset to oldest offset = {}", offset);
-            }
-            else {
-              logger.warn("InvalidMessageSizeException occurred for Kafka({}:{}/{}:{}), querying Kafka for oldest Offset and reseting local offset", e, kafka.brokerHost, kafka.brokerPort, riverConfig.topic, riverConfig.partition);
-              offset = kafka.getOldestOffset(riverConfig.topic, riverConfig.partition);
-              logger.warn("Setting offset to oldest offset = {}", offset);
-            }
-            try {
-              Thread.sleep(5000);
-            } catch (InterruptedException e2) {
-              break;
-            }
-          }
-          catch (Exception e) {
-            logger.error("Error fetching from Kafka({}:{}/{}:{}), retrying in 5 sec", e, kafka.brokerHost, kafka.brokerPort, riverConfig.topic, riverConfig.partition);
-            try {
-              Thread.sleep(5000);
-              reconnectToKafka();
-            } catch (InterruptedException e2) {
-              break;
-            }
-          }
-        } // end while
-        kafka.close();
-        logger.info("KafkaRiverWorker is stopping...");
-      } catch (Exception e) {
-        logger.error("Unexpected Error Occurred", e);
+		void dumpStats() {
+			long elapsed = System.currentTimeMillis() - river.statsLastPrintTime;
+			if (elapsed >= 10000) {
+				river.stats.backlog = getBacklogSize();
+				river.stats.rate = (double) river.stats.numMessages / ((double) elapsed / 1000.0);
+				logger.info("{}:{}/{}:{} {} msg ({} msg/s), flushed {} ({} err, {} succ) [msg backlog {}]", river.kafka.brokerHost,
+						river.kafka.brokerPort, river.riverConfig.topic, river.riverConfig.partition, river.stats.numMessages,
+						String.format("%.2f", river.stats.rate), river.stats.flushes, river.stats.failed, river.stats.succeeded,
+						getBytesString(river.stats.backlog));
+				river.statsd.reoportStats(river.stats);
+				resetStats();
+			}
+		}
 
-        // Don't normally like to rethrow exceptions like this, but ES silently ignores them in Plugins
-        throw new RuntimeException(e);
-      }
-    } // end run
-  }
+		public void runSingle() {
 
-  /**
-   * @param bytes
-   * @return
-   */
-  static String getBytesString(long bytes)
-  {
-    String size;
-    if( Math.floor(bytes/(1024*1024*1024)) > 0){
-      size = String.format("%.2f GB", (double)bytes/(1024.0*1024.0*1024.0));
-    }
-    else if( Math.floor(bytes/(1024*1024)) > 0){
-      size = String.format("%.2f MB", (double)bytes/(1024.0*1024.0));
-    }
-    else if( Math.floor(bytes/(1024)) > 0){
-      size = String.format("%.2f KB", (double)bytes/(1024.0));
-    }
-    else{
-      size = bytes+" B";
-    }
-    return size;
-  }
+			try {
+				logger.info("KafkaRiverWorker is running...");
+
+				while (true) {
+					if (closed)
+						break;
+
+					try {
+
+						dumpStats();
+
+						ByteBufferMessageSet msgs = river.kafka.fetch(river.riverConfig.topic, river.riverConfig.partition, river.offset,
+								river.riverConfig.bulkSize);
+						if (msgs.validBytes() > 0) {
+							processNonEmptyMessageSet(msgs);
+							river.kafka.saveOffset(river.riverConfig.riverName, river.riverConfig.topic, river.riverConfig.partition, river.offset);
+						} else {
+							logger.debug("No messages received from Kafka for topic={}, partition={}, offset={}, bulkSize={}",
+									river.riverConfig.topic, river.riverConfig.partition, river.offset, river.riverConfig.bulkSize);
+							Thread.sleep(1000);
+						}
+					} catch (InterruptedException e2) {
+						break;
+					} catch (OffsetOutOfRangeException e) {
+						// Assumption: EITHER
+						//
+						// 1) This River is starting for the first time and Kafka has already aged some data out (so the lowest offset is not 0)
+						// OR
+						// 2) This river has gotten far enough behind that Kafka has aged off enough data that the offset is no longer valid.
+						// If this is the case, this will likely happen everytime Kafka ages off old data unless the data flow decreases in volume.
+						resetOffset();
+					} catch (InvalidMessageSizeException e) {
+						resetOffset();
+						try {
+							Thread.sleep(5000);
+						} catch (InterruptedException e2) {
+							break;
+						}
+					} catch (Exception e) {
+						logger.error("Error fetching from Kafka({}:{}/{}:{}), retrying in 5 sec", e, river.kafka.brokerHost, river.kafka.brokerPort,
+								river.riverConfig.topic, river.riverConfig.partition);
+						try {
+							Thread.sleep(5000);
+							reconnectToKafka();
+						} catch (InterruptedException e2) {
+							break;
+						}
+					}
+				} // end while
+				river.kafka.close();
+				logger.info("KafkaRiverWorker is stopping...");
+			} catch (Exception e) {
+				logger.error("Unexpected Error Occurred", e);
+
+				// Don't normally like to rethrow exceptions like this, but ES silently ignores them in Plugins
+				throw new RuntimeException(e);
+			}
+		} // end run
+
+		private void resetOffset() {
+			if (river.riverConfig.offset < 0) {
+				logger.warn("Encountered OffsetOutOfRangeException, querying Kafka for newest Offset and reseting local offset");
+				river.offset = river.kafka.getNewestOffset(river.riverConfig.topic, river.riverConfig.partition);
+				logger.warn("Setting offset to oldest offset = {}", river.offset);
+			} else if (river.riverConfig.offset == 0) {
+				logger.warn("Encountered OffsetOutOfRangeException, querying Kafka for oldest Offset and reseting local offset");
+				river.offset = river.kafka.getOldestOffset(river.riverConfig.topic, river.riverConfig.partition);
+				logger.warn("Setting offset to oldest offset = {}", river.offset);
+			} else {
+				logger.warn("Encountered OffsetOutOfRangeException, set Offset and reseting local offset");
+				river.offset = river.riverConfig.offset;
+				logger.warn("Setting offset to oldest offset = {}", river.offset);
+			}
+		}
+	}
+
+	/**
+	 * @param bytes
+	 * @return
+	 */
+	static String getBytesString(long bytes) {
+		String size;
+		if (Math.floor(bytes / (1024 * 1024 * 1024)) > 0) {
+			size = String.format("%.2f GB", (double) bytes / (1024.0 * 1024.0 * 1024.0));
+		} else if (Math.floor(bytes / (1024 * 1024)) > 0) {
+			size = String.format("%.2f MB", (double) bytes / (1024.0 * 1024.0));
+		} else if (Math.floor(bytes / (1024)) > 0) {
+			size = String.format("%.2f KB", (double) bytes / (1024.0));
+		} else {
+			size = bytes + " B";
+		}
+		return size;
+	}
 }

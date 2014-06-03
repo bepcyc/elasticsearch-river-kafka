@@ -32,20 +32,26 @@ import kafka.message.Message;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 
 public class RawMessageHandlerTest extends TestCase {
-  public void testIt() throws Exception
-  {
-    byte[] data = "somedata".getBytes();
-    List<String> l = new ArrayList<>();
+	public void testIt() throws Exception {
+		byte[] data = "somedata".getBytes();
+		List<String> l = new ArrayList<String>();
 
-    MessageHandler m = new RawMessageHandler();
-    Message message = createMock(Message.class);
-    expect(message.payload()).andReturn(ByteBuffer.wrap(data));
+		MessageHandler m = new RawMessageHandler();
+		Message message = createMock(Message.class);
+		expect(message.payload()).andReturn(ByteBuffer.wrap(data));
 
-    BulkRequestBuilder bulkRequestBuilder = createMock(BulkRequestBuilder.class);
-    expect(bulkRequestBuilder.add(aryEq(data), eq(0), eq(data.length), eq(false))).andReturn(null);
-    replay(message, bulkRequestBuilder);
+		BulkRequestBuilder bulkRequestBuilder = createMock(BulkRequestBuilder.class);
+		expect(bulkRequestBuilder.add(aryEq(data), eq(0), eq(data.length), eq(false))).andReturn(null);
+		replay(message, bulkRequestBuilder);
 
-    m.handle(bulkRequestBuilder, message);
-    verify(bulkRequestBuilder, message);
-  }
+		m.handle(bulkRequestBuilder, getMessageData(message));
+		verify(bulkRequestBuilder, message);
+	}
+
+	public static byte[] getMessageData(Message message) {
+		ByteBuffer buf = message.payload();
+		byte[] data = new byte[buf.remaining()];
+		buf.get(data);
+		return data;
+	}
 }
