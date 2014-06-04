@@ -17,9 +17,9 @@ package org.elasticsearch.river.kafka;
 
 import java.util.Map;
 
+import org.codehaus.jackson.map.DeserializationConfig.Feature;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectReader;
-import org.codehaus.jackson.map.DeserializationConfig.Feature;
 import org.codehaus.jackson.map.annotate.JsonSerialize;
 import org.codehaus.jackson.type.TypeReference;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
@@ -38,7 +38,7 @@ import org.elasticsearch.client.Client;
  * 
  */
 public class JsonMessageHandler extends MessageHandler {
-	
+
 	static final ObjectMapper objectMapper = new ObjectMapper();
 
 	final ObjectReader reader = objectMapper.reader(new TypeReference<Map<String, Object>>() {
@@ -49,7 +49,7 @@ public class JsonMessageHandler extends MessageHandler {
 		objectMapper.configure(Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);
 		objectMapper.setSerializationInclusion(JsonSerialize.Inclusion.NON_NULL);
 	}
-	
+
 	private Client client;
 	private Map<String, Object> messageMap;
 
@@ -61,8 +61,12 @@ public class JsonMessageHandler extends MessageHandler {
 		messageMap = reader.readValue(playload);
 	}
 
-	protected String getKey() {
-		return (String) messageMap.get("key");
+	protected String getIndex() {
+		return (String) messageMap.get("index");
+	}
+
+	protected String getType() {
+		return (String) messageMap.get("type");
 	}
 
 	protected String getId() {
@@ -76,7 +80,7 @@ public class JsonMessageHandler extends MessageHandler {
 	protected IndexRequestBuilder createIndexRequestBuilder() {
 		// Note: prepareIndex() will automatically create the index if it
 		// doesn't exist
-		return client.prepareIndex(getKey() + "_index", getKey() + "_type", getId()).setSource(getSource());
+		return client.prepareIndex(getIndex(), getType(), getId()).setSource(getSource());
 	}
 
 	@Override

@@ -93,7 +93,7 @@ public class JsonMessageHandlerTest extends TestCase {
 			fail("This should not fail");
 		}
 
-		assertEquals(h.getKey(), rec.get("key"));
+		assertEquals(h.getType(), rec.get("type"));
 		assertEquals(h.getSource(), rec.get("source"));
 		assertEquals(h.getId(), rec.get("id"));
 		verify(message);
