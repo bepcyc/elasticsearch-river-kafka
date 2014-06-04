@@ -77,7 +77,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 		try {
 			logger.info("creating kafka river: zookeeper = {}, name = {}, message_handler_factory_class = {}", riverConfig.zookeeper,
 					riverConfig.riverName, riverConfig.factoryClass);
-			logger.info("partition = {}, topic = {},offset = {} ", riverConfig.partition, riverConfig.topic,riverConfig.offset);
+			logger.info("partition = {}, topic = {},offset = {} ", riverConfig.partition, riverConfig.topic, riverConfig.offset);
 			logger.info("bulkSize = {}, bulkTimeout = {}", riverConfig.bulkSize, riverConfig.bulkTimeout);
 
 			KafkaRiverWorker worker = new KafkaRiverWorker(this.createMessageHandler(client, riverConfig), riverConfig, client);
@@ -219,7 +219,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 			props.put("zookeeper.session.timeout.ms", "10000");
 			props.put("zookeeper.sync.time.ms", "200");
 			props.put("auto.commit.interval.ms", "1000");
-			if (river.riverConfig.offset < 0) {
+			if (river.riverConfig.offset <= -1) {
 				props.put("auto.offset.reset", "largest");
 			} else {
 				ZkUtils.maybeDeletePath(props.getProperty("zookeeper.connect"), "/consumers/" + props.getProperty("group.id"));
@@ -263,7 +263,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 							byte[] playload = item.message();
 							logger.info(new String(playload));
 							river.msgHandler.handle(bulkRequestBuilder, playload);
-							logger.info("handleMessages processed {} messages stats {} ", numMsg,river.stats.numMessages);
+							logger.info("handleMessages processed {} messages stats {} ", numMsg, river.stats.numMessages);
 							executeBuilder(bulkRequestBuilder);
 						} catch (Exception e) {
 							logger.warn("Failed handling message", e);
@@ -273,7 +273,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 						e.printStackTrace();
 					}
 				}
-				
+
 			}
 		}
 
@@ -285,7 +285,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 				this.river.kafka = new KafkaClient(river.riverConfig.zookeeper, river.riverConfig.topic, river.riverConfig.partition);
 				this.river.offset = river.kafka.getOffset(river.riverConfig.riverName, river.riverConfig.topic, river.riverConfig.partition,
 						river.riverConfig.offset);
-				this.river.offset = 0;
+				//this.river.offset = 0;
 			}
 		}
 
@@ -313,7 +313,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 			++river.stats.flushes;
 			BulkResponse response = bulkRequestBuilder.execute().actionGet();
 			if (response.hasFailures()) {
-				logger.warn("failed to execute" + response.buildFailureMessage());
+				logger.warn("failed to execute " + response.buildFailureMessage());
 			}
 
 			for (BulkItemResponse resp : response) {
@@ -433,7 +433,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 		} // end run
 
 		private void resetOffset() {
-			if (river.riverConfig.offset < 0) {
+			if (river.riverConfig.offset <= -1) {
 				logger.warn("Encountered OffsetOutOfRangeException, querying Kafka for newest Offset and reseting local offset");
 				river.offset = river.kafka.getNewestOffset(river.riverConfig.topic, river.riverConfig.partition);
 				logger.warn("Setting offset to oldest offset = {}", river.offset);
