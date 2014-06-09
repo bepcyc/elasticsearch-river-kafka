@@ -15,6 +15,8 @@
  */
 package org.elasticsearch.river.kafka;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.codehaus.jackson.map.DeserializationConfig.Feature;
@@ -62,7 +64,12 @@ public class JsonMessageHandler extends MessageHandler {
 	}
 
 	protected String getIndex() {
-		return (String) messageMap.get("index");
+		Object tags = messageMap.get("tags");
+		if (tags != null) {
+			return ((ArrayList<String>) tags).get(0);
+		} else {
+			return getType();
+		}
 	}
 
 	protected String getType() {
@@ -74,7 +81,27 @@ public class JsonMessageHandler extends MessageHandler {
 	}
 
 	protected Map<String, Object> getSource() {
-		return (Map<String, Object>) messageMap.get("source");
+		Object msg = messageMap.get("message");
+		if (msg instanceof String) {
+			Map<String, Object> map = new HashMap<String, Object>();
+			map.put("@timestamp", messageMap.get("@timestamp"));
+			addExtra(map);
+			map.put("msg", msg);
+			return map;
+		} else {
+			Map<String, Object> map = (Map<String, Object>) msg;
+			addExtra(map);
+			return map;
+		}
+	}
+
+	private void addExtra(Map<String, Object> map) {
+		if (messageMap.get("host") != null) {
+			map.put("@host", messageMap.get("host"));
+		}
+		if (messageMap.get("path") != null) {
+			map.put("@path", messageMap.get("path"));
+		}
 	}
 
 	protected IndexRequestBuilder createIndexRequestBuilder() {

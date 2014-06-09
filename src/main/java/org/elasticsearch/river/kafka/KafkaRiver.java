@@ -32,14 +32,15 @@ import kafka.javaapi.consumer.ConsumerConnector;
 import kafka.javaapi.message.ByteBufferMessageSet;
 import kafka.message.MessageAndMetadata;
 import kafka.message.MessageAndOffset;
-import kafka.utils.ZkUtils;
 
 import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.client.Client;
+import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ImmutableSettings;
+import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.river.AbstractRiverComponent;
 import org.elasticsearch.river.River;
@@ -130,9 +131,10 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 
 	public static void main(String[] args) throws IOException {
 		Map<String, Object> kafkaMap = new HashMap<String, Object>();
-		kafkaMap.put("zookeeper", "omad1.server.163.org:2181");
+		String host = "10.120.104.124";
+		kafkaMap.put("zookeeper", host + ":2181");
 		String topic = "testomad";
-		kafkaMap.put("topic", "testomad");
+		kafkaMap.put("topic", topic);
 		kafkaMap.put("partition", "-1");
 		// kafka.put("message_handler_factory_class", "my.factory.class.MyFactory");
 
@@ -141,7 +143,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 		index.put("bulk_timeout", "111ms");
 
 		Map<String, Object> statsd = new HashMap<String, Object>();
-		statsd.put("host", "omad1.server.163.org");
+		statsd.put("host", host);
 		statsd.put("port", "8125");
 		statsd.put("prefix", "boo.yeah");
 
@@ -149,7 +151,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 		map.put("kafka", kafkaMap);
 		map.put("index", index);
 		map.put("statsd", statsd);
-
+		Client client = new TransportClient().addTransportAddress(new InetSocketTransportAddress(host, 9300));
 		/*
 		 * Properties props = new Properties(); props.put("zookeeper.connect", "omad1.server.163.org:2181"); props.put("group.id", "test");
 		 * props.put("zookeeper.session.timeout.ms", "10000"); props.put("zookeeper.sync.time.ms", "200"); props.put("auto.commit.interval.ms",
@@ -168,7 +170,7 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 
 		RiverSettings settings = new RiverSettings(ImmutableSettings.settingsBuilder().build(), map);
 		KafkaRiverConfig c = new KafkaRiverConfig("testRiver", settings);
-		KafkaRiver r = new KafkaRiver(new RiverName("kafka", "kafka"), settings, null);
+		KafkaRiver r = new KafkaRiver(new RiverName("kafka", "kafka"), settings, client);
 		r.start();
 		System.in.read();
 	}
@@ -181,14 +183,10 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 	public class KafkaRiverWorker implements Runnable {
 
 		KafkaRiverWorkerData river = new KafkaRiverWorkerData(new Stats());
-		BulkRequestBuilder bulkRequestBuilder = null;
 
 		public KafkaRiverWorker(MessageHandler msgHandler, KafkaRiverConfig riverConfig, Client client) throws Exception {
 			this.river.msgHandler = msgHandler;
 			this.river.client = client;
-			if (client != null) {
-				bulkRequestBuilder = client.prepareBulk();
-			}
 			this.river.riverConfig = riverConfig;
 			reconnectToKafka();
 			resetStats();
@@ -222,9 +220,10 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 			if (river.riverConfig.offset <= -1) {
 				props.put("auto.offset.reset", "largest");
 			} else {
-				ZkUtils.maybeDeletePath(props.getProperty("zookeeper.connect"), "/consumers/" + props.getProperty("group.id"));
+				// ZkUtils.maybeDeletePath(props.getProperty("zookeeper.connect"), "/consumers/" + props.getProperty("group.id"));
 				props.put("auto.offset.reset", "smallest");
 			}
+			props.put("auto.offset.reset", "largest");
 			logger.info("auto.offset.reset {}", props.getProperty("auto.offset.reset"));
 			ConsumerConfig config = new ConsumerConfig(props);
 			try {
@@ -250,30 +249,45 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 			// KafkaStream<byte[], byte[]> stream = consumerMap.get(topic);
 			List<KafkaStream<byte[], byte[]>> partitions = consumerMap.get(river.riverConfig.topic);
 			// start
-			for (KafkaStream<byte[], byte[]> partition : partitions) {
-				ConsumerIterator<byte[], byte[]> it = partition.iterator();
-				while (it.hasNext()) {
-					// connector.commitOffsets();手动提交offset,当autocommit.enable=false时使用
-					MessageAndMetadata<byte[], byte[]> item = it.next();
+			final MessageExecutor executor = new MessageExecutor() {
+
+				@Override
+				public void execute(byte[] playload) {
+					BulkRequestBuilder bulkRequestBuilder = client.prepareBulk();
 					try {
-						long numMsg = 0;
-						++numMsg;
-						++river.stats.numMessages;
-						try {
-							byte[] playload = item.message();
-							logger.info(new String(playload));
-							river.msgHandler.handle(bulkRequestBuilder, playload);
-							logger.info("handleMessages processed {} messages stats {} ", numMsg, river.stats.numMessages);
-							executeBuilder(bulkRequestBuilder);
-						} catch (Exception e) {
-							logger.warn("Failed handling message", e);
-						}
+						logger.info(new String(playload));
+						river.msgHandler.handle(bulkRequestBuilder, playload);
 					} catch (Exception e) {
-						//
 						e.printStackTrace();
 					}
+					executeBuilder(bulkRequestBuilder);
 				}
 
+			};
+
+			for (KafkaStream<byte[], byte[]> partition : partitions) {
+				try {
+					ConsumerIterator<byte[], byte[]> it = partition.iterator();
+					while (it.hasNext()) {
+						// connector.commitOffsets();手动提交offset,当autocommit.enable=false时使用
+						MessageAndMetadata<byte[], byte[]> item = it.next();
+						try {
+							long numMsg = 0;
+							++numMsg;
+							++river.stats.numMessages;
+							try {
+								executor.execute(item.message());
+								logger.info("handleMessages processed {} messages stats {} ", numMsg, river.stats.numMessages);
+							} catch (Exception e) {
+								logger.warn("Failed handling message", e);
+							}
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+				} catch (Exception ex) {
+					ex.printStackTrace();
+				}
 			}
 		}
 
@@ -285,11 +299,11 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 				this.river.kafka = new KafkaClient(river.riverConfig.zookeeper, river.riverConfig.topic, river.riverConfig.partition);
 				this.river.offset = river.kafka.getOffset(river.riverConfig.riverName, river.riverConfig.topic, river.riverConfig.partition,
 						river.riverConfig.offset);
-				//this.river.offset = 0;
+				// this.river.offset = 0;
 			}
 		}
 
-		void handleMessages(ByteBufferMessageSet msgs) {
+		void handleMessages(BulkRequestBuilder bulkRequestBuilder, ByteBufferMessageSet msgs) {
 			long numMsg = 0;
 			for (MessageAndOffset mo : msgs) {
 				++numMsg;
@@ -310,12 +324,12 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 		void executeBuilder(BulkRequestBuilder bulkRequestBuilder) {
 			if (bulkRequestBuilder == null || bulkRequestBuilder.numberOfActions() == 0)
 				return;
+			logger.info("BulkRequestBuilder processed {} messages", bulkRequestBuilder.numberOfActions());
 			++river.stats.flushes;
 			BulkResponse response = bulkRequestBuilder.execute().actionGet();
 			if (response.hasFailures()) {
 				logger.warn("failed to execute " + response.buildFailureMessage());
 			}
-
 			for (BulkItemResponse resp : response) {
 				if (resp.isFailed()) {
 					river.stats.failed++;
@@ -327,7 +341,8 @@ public class KafkaRiver extends AbstractRiverComponent implements River {
 
 		void processNonEmptyMessageSet(ByteBufferMessageSet msgs) {
 			logger.debug("Processing {} bytes of messages ...", msgs.validBytes());
-			handleMessages(msgs);
+			BulkRequestBuilder bulkRequestBuilder = client.prepareBulk();
+			handleMessages(bulkRequestBuilder, msgs);
 			executeBuilder(bulkRequestBuilder);
 		}
 
