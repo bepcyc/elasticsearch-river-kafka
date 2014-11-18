@@ -5,28 +5,24 @@ The Kafka River plugin allows index bulk format messages into elasticsearch.
 
 1. Download & Build Kafka
 	
-	See [Apacke Kafka Quick Start Guide](http://kafka.apache.org/07/quickstart.html)  for instructions on how to Download and Build.
+	See [Apache Kafka Quick Start Guide](http://kafka.apache.org/08/quickstart.html)  for instructions on how to Download and Build.
 
 	If you are installing on an encyrpted Ubuntu drive you may get "File name too long" error during the build. 
 	This can be solved by building on an unencrypted file system and moving the files to your desired install point. 
 
-2. install kafka in your maven repo:
-
-        mvn install:install-file -Dfile=./core/target/scala_2.8.0/kafka-0.7.2.jar -DgroupId=org.apache.kafka \
-            -DartifactId=kafka -Dversion=0.7.2 -Dpackaging=jar
-
-3. Build this plugin:
+2. Build this plugin:
 
         mvn compile test package 
-        # this will create a file here: target/releases/elasticsearch-river-kafka-1.0.1-SNAPSHOT.zip
-        PLUGIN_PATH=`pwd`/target/releases/elasticsearch-river-kafka-1.0.1-SNAPSHOT.zip
+        # this will create a file here: target/releases/elasticsearch-river-kafka-x.y.z-SNAPSHOT.zip
+	PLUGIN_VERSION=$(mvn validate|grep "elasticsearch-river-kafka"|cut -d' ' -f4)
+        PLUGIN_PATH=`pwd`/target/releases/elasticsearch-river-kafka-${PLUGIN_VERSION}.zip
 
-4. Install the PLUGIN
+3. Install the PLUGIN
 
         cd $ELASTICSEARCH_HOME
-        ./bin/plugin -url file:/$PLUGIN_PATH -install elasticsearch-river-kafka
+        ./bin/plugin -url file://$PLUGIN_PATH -install elasticsearch-river-kafka
 
-5. Updating the plugin
+4. Updating the plugin
 
         cd $ELASTICSEARCH_HOME
         ./bin/plugin -remove elasticsearch-river-kafka
@@ -61,7 +57,7 @@ Creating the Kafka river is as simple as (all configuration parameters are provi
         },
         "statsd":{
             "prefix": "es-kafka-river",
-            "host": "ambassador",
+            "host": "localhost",
             "port": "8125"
         }
 
@@ -88,7 +84,7 @@ order to consume from multiple partitions and multiple brokers, multiple rivers 
         },
         "statsd":{
             "prefix": "es-kafka-river",
-            "host": "ambassador",
+            "host": "localhost",
             "port": "8125"
         }
 
@@ -109,7 +105,7 @@ order to consume from multiple partitions and multiple brokers, multiple rivers 
         },
         "statsd":{
             "prefix": "es-kafka-river",
-            "host": "ambassador",
+            "host": "localhost",
             "port": "8125"
         }
 
@@ -130,7 +126,7 @@ order to consume from multiple partitions and multiple brokers, multiple rivers 
         },
         "statsd":{
             "prefix": "es-kafka-river",
-            "host": "ambassador",
+            "host": "localhost",
             "port": "8125"
         }
 
@@ -151,7 +147,7 @@ order to consume from multiple partitions and multiple brokers, multiple rivers 
         },
         "statsd":{
             "prefix": "es-kafka-river",
-            "host": "ambassador",
+            "host": "localhost",
             "port": "8125"
         }
 
