@@ -14,7 +14,7 @@ The Kafka River plugin allows index bulk format messages into elasticsearch.
 
         mvn compile test package 
         # this will create a file here: target/releases/elasticsearch-river-kafka-x.y.z-SNAPSHOT.zip
-	PLUGIN_VERSION=$(mvn validate|grep "elasticsearch-river-kafka"|cut -d' ' -f4)
+        PLUGIN_VERSION=$(mvn validate|grep "elasticsearch-river-kafka"|cut -d' ' -f4)
         PLUGIN_PATH=`pwd`/target/releases/elasticsearch-river-kafka-${PLUGIN_VERSION}.zip
 
 3. Install the PLUGIN
